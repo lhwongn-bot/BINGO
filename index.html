@@ -1,43 +1,4 @@
-<script type="text/javascript">
-        var gk_isXlsx = false;
-        var gk_xlsxFileLookup = {};
-        var gk_fileData = {};
-        function filledCell(cell) {
-          return cell !== '' && cell != null;
-        }
-        function loadFileData(filename) {
-        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
-            try {
-                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
-                var firstSheetName = workbook.SheetNames[0];
-                var worksheet = workbook.Sheets[firstSheetName];
-
-                // Convert sheet to JSON to filter blank rows
-                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
-                // Filter out blank rows (rows where all cells are empty, null, or undefined)
-                var filteredData = jsonData.filter(row => row.some(filledCell));
-
-                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
-                var headerRowIndex = filteredData.findIndex((row, index) =>
-                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
-                );
-                // Fallback
-                if (headerRowIndex === -1 || headerRowIndex > 25) {
-                  headerRowIndex = 0;
-                }
-
-                // Convert filtered JSON back to CSV
-                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
-                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
-                return csv;
-            } catch (e) {
-                console.error(e);
-                return "";
-            }
-        }
-        return gk_fileData[filename] || "";
-        }
-        </script><!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-HK">
 <head>
   <meta charset="UTF-8">
@@ -119,16 +80,17 @@
       <div id="history-list"></div>
     </div>
   </div>
-
+  <audio id="button-audio" src="https://freesound.org/data/previews/577/577800_6494682-lq.mp3" preload="auto"></audio>
+  <audio id="spin-audio" src="https://freesound.org/data/previews/145/145443_2433154-lq.mp3" preload="auto" loop></audio>
   <script>
     const words = [
       "國慶日", "慶典", "普天同慶", "喜慶", "慶祝活動", "彩旗", "掛飾", "紅色主題", "煙花", "花車巡遊",
       "天安門", "北京", "香港", "中華人民共和國", "國旗", "國徽", "升旗儀式", "長城", "鳳凰", "龍",
+      "Bingo", "掉彩虹", "問答遊戲", "懷舊金曲", "傾計時段", "義工協助", "人釘人服務", "安慰獎", "活動紙", "長者合照",
+      "愛國", "團結", "和諧", "共融", "家國情懷", "繁榮昌盛", "國泰民安", "身體健康", "心想事成", "萬事如意",
       "國歌", "我的祖國", "東方之珠", "獅子山下", "合唱", "表演", "舞蹈", "才藝", "樂器", "鼓掌",
       "回歸", "主權", "建國", "1949年", "一國兩制", "五星紅旗", "國慶假期", "國慶七天樂", "國慶黃金周", "中央政府",
       "禮物", "禮品包", "紅包", "國慶賀卡", "手工藝", "貼紙", "摺紙", "DIY", "國旗貼紙", "紀念品",
-      "Bingo", "掉彩虹", "問答遊戲", "懷舊金曲", "傾計時段", "義工協助", "人釘人服務", "安慰獎", "活動紙", "長者合照",
-      "愛國", "團結", "和諧", "共融", "家國情懷", "繁榮昌盛", "國泰民安", "身體健康", "心想事成", "萬事如意",
       "國慶由來", "建國歷史", "中國地圖", "中國文化", "中華民族", "民族團結", "國家象徵", "國慶故事", "國慶知識", "國慶問答",
       "主題背景", "活動海報", "主題口號", "活動流程", "活動主持", "活動場地佈置", "活動紀錄", "活動相簿", "活動回顧", "活動評估",
       "國慶拼圖", "國慶畫作", "國慶故事分享", "國慶影片", "國慶相框", "國慶小冊子", "國慶主題曲", "國慶小遊戲", "國慶祝福牆", "國慶心意卡"
@@ -136,13 +98,9 @@
     let availableWords = [...words];
     let history = [];
 
-    // Load sound effects
-    const buttonSound = new Audio('https://freesound.org/data/previews/577/577800_6494682-lq.mp3'); // Party popper sound
-    const spinSound = new Audio('https://freesound.org/data/previews/145/145443_2433154-lq.mp3'); // Spin sound
-
-    // Preload sounds to minimize delay
-    buttonSound.preload = 'auto';
-    spinSound.preload = 'auto';
+    // Sound effect elements
+    const buttonSound = document.getElementById('button-audio');
+    const spinSound = document.getElementById('spin-audio');
 
     function drawWord() {
       if (availableWords.length === 0) {
@@ -150,13 +108,18 @@
         return;
       }
 
-      // Play party popper sound for button press
-      buttonSound.play().catch(error => console.log('Button sound error:', error));
+      // Play button sound
+      buttonSound.currentTime = 0;
+      buttonSound.play();
 
       const drawButton = document.getElementById('draw-button');
       drawButton.disabled = true;
       const drawnWordElement = document.getElementById('drawn-word');
       drawnWordElement.style.opacity = 0;
+
+      // Start spinning sound
+      spinSound.currentTime = 0;
+      spinSound.play();
 
       // Trigger confetti burst
       confetti({
@@ -174,8 +137,9 @@
         const selectedWord = availableWords[randomIndex];
         availableWords.splice(randomIndex, 1);
 
-        // Play spin sound
-        spinSound.play().catch(error => console.log('Spin sound error:', error));
+        // Stop spinning sound after spinning
+        spinSound.pause();
+        spinSound.currentTime = 0;
 
         drawnWordElement.innerText = selectedWord;
         drawnWordElement.classList.add('word-animate');
