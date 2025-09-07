@@ -1,168 +1,263 @@
-<!DOCTYPE html>
-<html lang="zh-HK">
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="zh-Hant">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>國慶日 Bingo 抽獎遊戲</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  <title>國慶日 Bingo 抽獎</title>
   <style>
-    @font-face {
-      font-family: 'BiauKai';
-      src: url('https://fonts.cdnfonts.com/css/biaukai');
-    }
     body {
-      font-family: 'BiauKai', sans-serif;
-      background: linear-gradient(135deg, #ff0000, #ff6666, #ff9999);
-      color: #fff;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background-color: #f0f0f0;
       margin: 0;
-      overflow: hidden;
+      padding: 20px;
+      position: relative;
     }
-    #drawn-word {
-      font-size: 4rem;
-      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
-      transition: opacity 0.5s ease-in-out;
+    h1 {
+      color: #333;
     }
-    #draw-button {
-      background: linear-gradient(45deg, #ffd700, #ffa500);
-      color: #8b0000;
-      font-size: 1.5rem;
-      padding: 1rem 2rem;
+    button {
+      padding: 15px 30px;
+      font-size: 18px;
+      background-color: #ff4d4d;
+      color: white;
       border: none;
-      border-radius: 10px;
+      border-radius: 5px;
       cursor: pointer;
-      transition: transform 0.2s;
+      margin: 20px;
+      position: relative;
+      z-index: 10;
     }
-    #draw-button:hover {
-      transform: scale(1.05);
+    button:hover {
+      background-color: #cc0000;
+    }
+    button:disabled {
+      background-color: #999;
+      cursor: not-allowed;
+    }
+    #spinningWord {
+      font-size: 24px;
+      font-weight: bold;
+      color: #0066cc;
+      margin: 20px 0;
+      min-height: 30px;
+      position: relative;
+      z-index: 10;
     }
     #history {
-      background: rgba(255, 255, 255, 0.2);
-      border-radius: 10px;
-      padding: 1rem;
-      max-height: 150px;
-      overflow-y: auto;
-      width: 320px;
+      margin-top: 20px;
+      text-align: left;
+      max-width: 800px;
+      margin-left: auto;
+      margin-right: auto;
+      position: relative;
+      z-index: 10;
     }
-    .word-animate {
-      animation: wordReveal 6s ease-in-out forwards;
+    #history ul {
+      list-style-type: none;
+      padding: 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
     }
-    @keyframes wordReveal {
-      0% {
-        opacity: 0;
-        transform: scale(0.5) rotate(0deg);
-        text-shadow: 0 0 0 rgba(255, 215, 0, 0);
-      }
-      50% {
-        opacity: 1;
-        transform: scale(1.2) rotate(1080deg);
-        text-shadow: 0 0 20px rgba(255, 215, 0, 0.8);
-      }
-      100% {
-        opacity: 1;
-        transform: scale(1) rotate(1080deg);
-        text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
-      }
+    #history li {
+      padding: 5px;
+      background-color: #fff;
+      margin: 5px;
+      border-radius: 3px;
+      flex: 1 1 22%;
+      text-align: center;
+    }
+    #status {
+      color: #ff4d4d;
+      font-weight: bold;
+      position: relative;
+      z-index: 10;
+    }
+    canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1;
     }
   </style>
 </head>
 <body>
-  <div class="text-center p-6">
-    <h1 class="text-5xl mb-6 text-yellow-300">國慶日 Bingo 抽獎</h1>
-    <div id="drawn-word" class="mb-8">點擊抽獎</div>
-    <button id="draw-button" onclick="drawWord()">抽獎</button>
-    <div id="history" class="absolute bottom-4 left-4 text-left text-lg">
-      <h2 class="text-xl font-bold mb-2">抽獎紀錄</h2>
-      <div id="history-list"></div>
-    </div>
+  <h1>國慶日 Bingo 抽獎</h1>
+  <button onclick="startDraw()">抽獎</button>
+  <div id="spinningWord"></div>
+  <div id="status"></div>
+  <div id="history">
+    <h2>抽獎紀錄</h2>
+    <ul id="historyList"></ul>
   </div>
-  <audio id="button-audio" src="https://freesound.org/data/previews/577/577800_6494682-lq.mp3" preload="auto"></audio>
-  <audio id="spin-audio" src="https://freesound.org/data/previews/145/145443_2433154-lq.mp3" preload="auto" loop></audio>
+  <canvas id="fireworksCanvas"></canvas>
+
+  <audio id="clickSound" src="https://freesound.org/data/previews/171/171671_2437358-lq.mp3"></audio>
+  <audio id="spinSound" src="https://freesound.org/data/previews/145/145447_2613690-lq.mp3" loop></audio>
+
   <script>
-    const words = [
-      "國慶日", "慶典", "普天同慶", "喜慶", "慶祝活動", "彩旗", "掛飾", "紅色主題", "煙花", "花車巡遊",
-      "天安門", "北京", "香港", "中華人民共和國", "國旗", "國徽", "升旗儀式", "長城", "鳳凰", "龍",
-      "Bingo", "掉彩虹", "問答遊戲", "懷舊金曲", "傾計時段", "義工協助", "人釘人服務", "安慰獎", "活動紙", "長者合照",
-      "愛國", "團結", "和諧", "共融", "家國情懷", "繁榮昌盛", "國泰民安", "身體健康", "心想事成", "萬事如意",
-      "國歌", "我的祖國", "東方之珠", "獅子山下", "合唱", "表演", "舞蹈", "才藝", "樂器", "鼓掌",
-      "回歸", "主權", "建國", "1949年", "一國兩制", "五星紅旗", "國慶假期", "國慶七天樂", "國慶黃金周", "中央政府",
-      "禮物", "禮品包", "紅包", "國慶賀卡", "手工藝", "貼紙", "摺紙", "DIY", "國旗貼紙", "紀念品",
-      "國慶由來", "建國歷史", "中國地圖", "中國文化", "中華民族", "民族團結", "國家象徵", "國慶故事", "國慶知識", "國慶問答",
-      "主題背景", "活動海報", "主題口號", "活動流程", "活動主持", "活動場地佈置", "活動紀錄", "活動相簿", "活動回顧", "活動評估",
-      "國慶拼圖", "國慶畫作", "國慶故事分享", "國慶影片", "國慶相框", "國慶小冊子", "國慶主題曲", "國慶小遊戲", "國慶祝福牆", "國慶心意卡"
-    ];
-    let availableWords = [...words];
-    let history = [];
+    const spinningWordDiv = document.getElementById('spinningWord');
+    const historyList = document.getElementById('historyList');
+    const statusDiv = document.getElementById('status');
+    const clickSound = document.getElementById('clickSound');
+    const spinSound = document.getElementById('spinSound');
+    const drawButton = document.querySelector('button');
+    const canvas = document.getElementById('fireworksCanvas');
+    const ctx = canvas.getContext('2d');
 
-    // Sound effect elements
-    const buttonSound = document.getElementById('button-audio');
-    const spinSound = document.getElementById('spin-audio');
+    // Set canvas size
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    window.addEventListener('resize', () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    });
 
-    function drawWord() {
-      if (availableWords.length === 0) {
-        document.getElementById('drawn-word').innerText = '所有詞語已抽完！';
-        return;
+    // Firework particle system
+    let particles = [];
+    function createFirework() {
+      const particleCount = 30;
+      const x = canvas.width * (0.3 + Math.random() * 0.4); // Random x in middle 40%
+      const y = canvas.height * (0.2 + Math.random() * 0.3); // Random y in top 50%
+      const colors = ['#ff0000', '#ff9900', '#00cc00', '#0066cc', '#cc00cc'];
+      for (let i = 0; i < particleCount; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = Math.random() * 5 + 2;
+        particles.push({
+          x: x,
+          y: y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          size: Math.random() * 3 + 2,
+          life: 0,
+          maxLife: 60 // ~2 seconds at 30fps
+        });
       }
-
-      // Play button sound
-      buttonSound.currentTime = 0;
-      buttonSound.play();
-
-      const drawButton = document.getElementById('draw-button');
-      drawButton.disabled = true;
-      const drawnWordElement = document.getElementById('drawn-word');
-      drawnWordElement.style.opacity = 0;
-
-      // Start spinning sound
-      spinSound.currentTime = 0;
-      spinSound.play();
-
-      // Trigger confetti burst
-      confetti({
-        particleCount: 100,
-        spread: 70,
-        origin: { y: 0.6 },
-        colors: ['#ff0000', '#ffd700', '#ffffff'],
-        shapes: ['circle', 'square'],
-        scalar: 1.2,
-        disableForReducedMotion: true
-      });
-
-      setTimeout(() => {
-        const randomIndex = Math.floor(Math.random() * availableWords.length);
-        const selectedWord = availableWords[randomIndex];
-        availableWords.splice(randomIndex, 1);
-
-        // Stop spinning sound after spinning
-        spinSound.pause();
-        spinSound.currentTime = 0;
-
-        drawnWordElement.innerText = selectedWord;
-        drawnWordElement.classList.add('word-animate');
-        drawnWordElement.style.opacity = 1;
-
-        // Log to history after animation ends
-        setTimeout(() => {
-          history.push(selectedWord);
-          updateHistory();
-          drawnWordElement.classList.remove('word-animate');
-          drawButton.disabled = false;
-        }, 6000);
-      }, 500);
     }
 
-    function updateHistory() {
-      const historyList = document.getElementById('history-list');
-      historyList.innerHTML = '';
-      for (let i = 0; i < history.length; i += 4) {
-        const row = document.createElement('div');
-        row.innerText = `${history[i] || ''} ${history[i + 1] || ''} ${history[i + 2] || ''} ${history[i + 3] || ''}`.trim();
-        historyList.appendChild(row);
+    function updateFireworks() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      particles = particles.filter(p => p.life < p.maxLife);
+      particles.forEach(p => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.05; // Gravity
+        p.life++;
+        p.size *= 0.98; // Shrink
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.fill();
+      });
+      if (particles.length > 0) {
+        requestAnimationFrame(updateFireworks);
       }
+    }
+
+    // Bingo words with numbers (no repetition)
+    let words = [
+      '1. 國慶', '2. 喜慶', '3. 華夏', '4. 中華', '5. 龍鳳', '6. 錦繡', '7. 盛典', '8. 光輝', '9. 民族', '10. 神州',
+      '11. 喜迎', '12. 鳳祥', '13. 瑞氣', '14. 昌盛', '15. 喜氣', '16. 榮光', '17. 團結', '18. 龍旗', '19. 鳳舞', '20. 龍耀',
+      '21. 龍騰', '22. 鳳鳴', '23. 龍躍', '24. 瑞雲', '25. 龍吟', '26. 鳳儀', '27. 民心', '28. 國運', '29. 華誕', '30. 華光',
+      '31. 喜歌', '32. 龍舞', '33. 鳳影', '34. 國魂', '35. 華章', '36. 喜紅', '37. 龍威', '38. 鳳彩', '39. 國旗', '40. 龍聲',
+      '41. 鳳羽', '42. 喜福', '43. 華彩', '44. 龍影', '45. 鳳瑞', '46. 喜耀', '47. 華瑞', '48. 龍慶', '49. 鳳慶', '50. 喜瑞',
+      '51. 國泰民安', '52. 盛世華章', '53. 錦繡山河', '54. 中華騰飛', '55. 國旗飄揚', '56. 同心共慶', '57. 華夏榮光', '58. 盛世歡騰', '59. 龍鳳吉祥', '60. 中華盛典',
+      '61. 鳳舞祥瑞', '62. 普天同慶', '63. 喜迎華誕', '64. 華誕光輝', '65. 國慶煙花', '66. 喜氣洋洋', '67. 中華昌盛', '68. 民族團結', '69. 國慶紅旗', '70. 喜慶滿城',
+      '71. 國慶禮讚', '72. 喜迎盛世', '73. 民族復興', '74. 龍鳳呈祥', '75. 鳳舞九天', '76. 龍耀神州', '77. 鳳鳴四海', '78. 龍鳴九州', '79. 鳳舞祥雲', '80. 龍鳳賀喜',
+      '81. 華夏歡慶', '82. 龍耀九州', '83. 華誕瑞雲', '84. 國慶榮光', '85. 喜慶神州', '86. 華夏瑞氣', '87. 龍鳳耀世', '88. 國慶光輝', '89. 鳳舞中原', '90. 龍騰四海',
+      '91. 華誕盛典', '92. 民族之光', '93. 喜慶萬家', '94. 華夏瑞雲', '95. 龍鳴盛世', '96. 鳳舞華夏', '97. 國慶祥瑞', '98. 喜慶中華', '99. 龍耀中原', '100. 華夏光輝'
+    ];
+    let isSpinning = false;
+
+    function startDraw() {
+      if (isSpinning || words.length === 0) return;
+      isSpinning = true;
+      drawButton.disabled = true;
+      statusDiv.textContent = '';
+
+      // Play click sound
+      clickSound.currentTime = 0;
+      clickSound.play().catch(err => console.log('Click sound error:', err));
+
+      // Trigger firework
+      createFirework();
+      requestAnimationFrame(updateFireworks);
+
+      // Start spinning with sound
+      spinSound.currentTime = 0;
+      spinSound.play().catch(err => console.log('Spin sound error:', err));
+      let spinCount = 0;
+      const spinDuration = 3000; // 3 seconds
+      const spinInterval = 100; // Update every 100ms
+
+      const spin = setInterval(() => {
+        spinningWordDiv.textContent = words[Math.floor(Math.random() * words.length)];
+        spinCount += spinInterval;
+        if (spinCount >= spinDuration) {
+          clearInterval(spin);
+          // Select and remove a random word
+          const randomIndex = Math.floor(Math.random() * words.length);
+          const finalWord = words[randomIndex];
+          words.splice(randomIndex, 1); // Remove word to prevent repetition
+          spinningWordDiv.textContent = finalWord;
+          spinSound.pause();
+          spinSound.currentTime = 0; // Reset for next spin
+          isSpinning = false;
+          drawButton.disabled = words.length === 0;
+          if (words.length === 0) {
+            statusDiv.textContent = '所有詞語已抽完！';
+          }
+
+          // Add to history
+          const li = document.createElement('li');
+          li.textContent = finalWord;
+          historyList.prepend(li);
+        }
+      }, spinInterval);
     }
   </script>
 </body>
