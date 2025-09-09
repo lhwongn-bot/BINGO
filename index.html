@@ -58,9 +58,16 @@
     }
     h1 {
       font-size: 80px;
+      animation: flashColors 1s infinite;
       color: red;
       text-shadow: 2px 2px 4px white;
     }
+    @keyframes flashColors {
+        0% { color: red; }    
+        50% { color: yellow; } 
+        100% { color: red; }  
+    }
+    
     button {
       padding: 15px 30px;
       font-size: 18px;
